@@ -61,45 +61,6 @@ namespace Pyro
                 StatsDisplay.enabled = !StatsDisplay.enabled;
                 StatsDisplay.GenericNotification.GetComponent<RectTransform>().sizeDelta = (StatsDisplay.enabled) ? new Vector2(250, 250) : new Vector2(0, 0);
             }
-
-
-            //// Ensure the player is loaded
-            //if (Player.cachedBody)
-            //{
-            //    // If the player is marked out of combat and was previously in combat
-            //    if (Player.cachedBody.outOfCombat && wasInCombat)
-            //    {
-            //        float currentTime = UnityEngine.Time.time;
-            //        float deltaTime = Math.Max(currentTime - lastCombatTime - outOfCombatDelay, 1); // Subtract the delay to get the exact time from first to last shot
-
-            //        ulong currentTotalDamage = Player.cachedStatsComponent.currentStats.GetStatValueULong(DamageDealt);
-            //        ulong deltaDamage = currentTotalDamage - lastTotalDamage;
-
-            //        ulong currentDPS = deltaDamage / (ulong)deltaTime;
-
-            //        if (currentDPS == 0) return;  // Ignore intervals where no shots were landed
-
-            //        LastNCombatDPS.AddLast(currentDPS);
-            //        if (LastNCombatDPS.Count > N) LastNCombatDPS.RemoveFirst();  // Keep only last N values
-
-            //        ulong sum = 0;
-            //        foreach (ulong dps in LastNCombatDPS)
-            //        {
-            //            sum += dps;
-            //        }
-            //        currentAvgDPS = sum / (ulong)LastNCombatDPS.Count;
-
-            //        wasInCombat = false;
-            //    }
-            //    // If the player is in combat and was previously out of combat
-            //    else if (!Player.cachedBody.outOfCombat && !wasInCombat)
-            //    {
-            //        wasInCombat = true;
-            //        lastCombatTime = UnityEngine.Time.time;
-            //        lastTotalDamage = Player.cachedStatsComponent.currentStats.GetStatValueULong(DamageDealt);
-
-            //    }
-            //}
         }
 
         private void RollingStats()
