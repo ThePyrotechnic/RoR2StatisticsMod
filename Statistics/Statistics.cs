@@ -6,12 +6,8 @@ using UnityEngine;
 using System;
 using System.Text;
 using System.Collections.Generic;
-using R2API.Utils;
-
 namespace Pyro
 {
-    [BepInDependency("com.bepis.r2api")]
-    //Change these
     [BepInPlugin("com.Pyro.Statistics", "Statistics", "1.0.0")]
     public class Statistics : BaseUnityPlugin
     {
