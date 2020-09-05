@@ -15,17 +15,18 @@ namespace Pyro
     [BepInPlugin("com.Pyro.Statistics", "Statistics", "1.0.0")]
     public class Statistics : BaseUnityPlugin
     {
-        private bool wasInCombat=false;
-
         private ulong currentAvgDPS;
 
         private ulong lastTotalDamage;
 
-        private float lastCombatTime;
 
         private const float outOfCombatDelay = 5f;
 
-        private int N = 60;
+        private int N = 30;
+
+        private Vector3 StatsPosition = new Vector3((Screen.width * 10f) / 100f, (Screen.height * 35f) / 100, 0f);
+
+        private Vector2 StatsSize = new Vector2(250f, 250f);
 
         private LinkedList<ulong> LastNCombatDPS;
 
@@ -48,18 +49,18 @@ namespace Pyro
 
             On.RoR2.Run.Start += OnRunStart;
 
-            On.RoR2.Run.BeginStage += OnBeginStage;
+            On.RoR2.Run.OnDestroy += OnRunEnd;
 
-            On.RoR2.Run.EndStage += OnEndStage;
-
+            StatsPosition = new Vector3((Screen.width * 10f) / 100f, (Screen.height * 35f) / 100, 0f);
+            StatsSize = new Vector2(250, 250);
         }
-
         private void Update()
         {
             if (ShowStats.Value.IsDown() && StatsDisplay)
             {
                 StatsDisplay.enabled = !StatsDisplay.enabled;
-                StatsDisplay.GenericNotification.GetComponent<RectTransform>().sizeDelta = (StatsDisplay.enabled) ? new Vector2(250, 250) : new Vector2(0, 0);
+                StatsDisplay.GenericNotification.GetComponent<RectTransform>().sizeDelta = (StatsDisplay.enabled) ? StatsSize : new Vector2(0, 0);
+                StatsDisplay.Root.transform.position = (StatsDisplay.enabled) ? StatsPosition : new Vector3(0, 0);
             }
         }
 
@@ -83,35 +84,29 @@ namespace Pyro
             lastTotalDamage = currentTotalDamage;
         }
 
-        private void OnBeginStage(On.RoR2.Run.orig_BeginStage orig, RoR2.Run self)
+        private void OnRunStart(On.RoR2.Run.orig_Start orig, RoR2.Run self)
         {
             orig(self);
+            // Must reset all values since class is not re-awoken/instantiated
+
+            DamageDealt = RoR2.Stats.StatDef.Find("totalDamageDealt");
+
+            currentAvgDPS = 0;
+
+            lastTotalDamage = 0;
+
+            LastNCombatDPS = new LinkedList<ulong>();
+
+            Player = LocalUserManager.GetFirstLocalUser();
 
             InvokeRepeating("RollingStats", 1f, 1f);
         }
 
-        private void OnEndStage(On.RoR2.Run.orig_EndStage orig, RoR2.Run self)
+        private void OnRunEnd(On.RoR2.Run.orig_OnDestroy orig, RoR2.Run self)
         {
-            orig(self);
-
-            // Pause rolling stat collection
             CancelInvoke("RollingStats");
-        }
 
-        private void OnRunStart(On.RoR2.Run.orig_Start orig, RoR2.Run self)
-        {
             orig(self);
-            // Must reset all values since class is not re-awoken/instanciated
-
-            DamageDealt = RoR2.Stats.StatDef.Find("totalDamageDealt");
-
-            LastNCombatDPS = new LinkedList<ulong>();
-
-            currentAvgDPS = 0;
-
-            wasInCombat = false;
-
-            Player = LocalUserManager.GetFirstLocalUser();
         }
 
         private void OnRecalculateStats(On.RoR2.CharacterBody.orig_RecalculateStats orig, RoR2.CharacterBody self)
@@ -146,18 +141,18 @@ namespace Pyro
                     "<style=cIsUtility><color=\"orange\">Attack</color></style>",
                     $"Damage: {self.damage} ({self.baseDamage + self.levelDamage * zeroBasedLevel})",
                     $"Atk Spd: {self.attackSpeed} ({self.baseAttackSpeed + self.levelAttackSpeed * zeroBasedLevel})",
-                    $"Crit: {self.crit} ({self.baseCrit + self.levelCrit * zeroBasedLevel})",
-                    $"<style=cIsUtility><color=\"green\">Skills</color></style>{Environment.NewLine}"
+                    $"Crit: {self.crit} ({self.baseCrit + self.levelCrit * zeroBasedLevel}){Environment.NewLine}"
                     ));
-                if (self.skillLocator.primary)
-                {   // isBullets does not seem to do what I expect it to do (Captain's intra-shot cooldown is apparently not a bullet)
-                    if (self.skillLocator.primary.isBullets) bodyStr.Append($"Prim Cd: { self.skillLocator.primary.baseSkill.shootDelay}{Environment.NewLine})");
-                }
-                if (self.skillLocator.secondary)
-                {
-                    if (self.skillLocator.secondary.isBullets) bodyStr.Append($"Sec Cd: { self.skillLocator.secondary.baseSkill.shootDelay}{Environment.NewLine}");
-                }
-                if (self.skillLocator.special) bodyStr.Append($"Spcl Cd: {self.skillLocator.special.CalculateFinalRechargeInterval()}{Environment.NewLine}");
+                //$"<style=cIsUtility><color=\"green\">Skills</color></style>{Environment.NewLine}"
+                //if (self.skillLocator.primary)
+                //{   // isBullets does not seem to do what I expect it to do (Captain's intra-shot cooldown is apparently not a bullet)
+                //    if (self.skillLocator.primary.isBullets) bodyStr.Append($"Prim Cd: { self.skillLocator.primary.baseSkill.shootDelay}{Environment.NewLine})");
+                //}
+                //if (self.skillLocator.secondary)
+                //{
+                //    if (self.skillLocator.secondary.isBullets) bodyStr.Append($"Sec Cd: { self.skillLocator.secondary.baseSkill.shootDelay}{Environment.NewLine}");
+                //}
+                //if (self.skillLocator.special) bodyStr.Append($"Spcl Cd: {self.skillLocator.special.CalculateFinalRechargeInterval()}{Environment.NewLine}");
 
                 //bodyStr.Append(String.Join(
                 //    Environment.NewLine,
