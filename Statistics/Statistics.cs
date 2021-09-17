@@ -6,6 +6,8 @@ using UnityEngine;
 using System;
 using System.Text;
 using System.Collections.Generic;
+using BepInEx.Logging;
+
 namespace Pyro
 {
     [BepInPlugin("com.Pyro.Statistics", "Statistics", "1.0.0")]
@@ -13,25 +15,26 @@ namespace Pyro
     {
         private ulong currentAvgDPS;
 
+        private ulong currentTotalDamage;
+
         private ulong lastTotalDamage;
-
-
-        private const float outOfCombatDelay = 5f;
 
         private int N = 30;
 
-        private Vector3 StatsPosition = new Vector3((Screen.width * 10f) / 100f, (Screen.height * 35f) / 100, 0f);
+        private Vector3 statsPosition = new Vector3(Screen.width * 0.1f, Screen.height * 0.35f, 0f);
 
-        private Vector2 StatsSize = new Vector2(250f, 250f);
+        private Vector2 statsSize = new Vector2(250f, 250f);
 
-        private LinkedList<ulong> LastNCombatDPS;
+        private LinkedList<ulong> lastNCombatDPS;
 
-        private StatDef DamageDealt;
+        private StatDef damageDealt;
 
-        private StatsDisplay StatsDisplay;
+        private LocalUser player;
 
-        private LocalUser Player;
+        private StatsDisplay statsDisplay;
 
+        public static ManualLogSource logger;
+        
         private ConfigEntry<KeyboardShortcut> ShowStats { get; set; }
 
         public Statistics()
@@ -47,55 +50,87 @@ namespace Pyro
 
             On.RoR2.Run.OnDestroy += OnRunEnd;
 
-            StatsPosition = new Vector3((Screen.width * 10f) / 100f, (Screen.height * 35f) / 100, 0f);
-            StatsSize = new Vector2(250, 250);
+            On.RoR2.ArenaMissionController.EndRound += OnArenaRoundEnd;
+
+            RoR2.GlobalEventManager.onClientDamageNotified += CheckDamage;
         }
         private void Update()
         {
-            if (ShowStats.Value.IsDown() && StatsDisplay)
+            if (ShowStats.Value.IsDown() && statsDisplay)
             {
-                StatsDisplay.enabled = !StatsDisplay.enabled;
-                StatsDisplay.GenericNotification.GetComponent<RectTransform>().sizeDelta = (StatsDisplay.enabled) ? StatsSize : new Vector2(0, 0);
-                StatsDisplay.Root.transform.position = (StatsDisplay.enabled) ? StatsPosition : new Vector3(0, 0);
+                statsDisplay.enabled = !statsDisplay.enabled;
+                statsDisplay.GenericNotification.GetComponent<RectTransform>().sizeDelta = (statsDisplay.enabled) ? statsSize : new Vector2(0, 0);
+                statsDisplay.Root.transform.position = (statsDisplay.enabled) ? statsPosition : new Vector3(0, 0);
             }
         }
 
         private void RollingStats()
         {
-            ulong currentTotalDamage = Player.cachedStatsComponent.currentStats.GetStatValueULong(DamageDealt);
             ulong deltaDamage = currentTotalDamage - lastTotalDamage;
 
             if (deltaDamage <= 0) return;
+            System.Console.WriteLine($"delta: {deltaDamage}");
+            lastNCombatDPS.AddLast(deltaDamage);
+            if (lastNCombatDPS.Count > N) lastNCombatDPS.RemoveFirst();  // Keep only last N values
 
-            LastNCombatDPS.AddLast(deltaDamage);
-            if (LastNCombatDPS.Count > N) LastNCombatDPS.RemoveFirst();  // Keep only last N values
-
+            StringBuilder debugStr = new StringBuilder("", 200);
             ulong sum = 0;
-            foreach (ulong dps in LastNCombatDPS)
+            foreach (ulong dps in lastNCombatDPS)
             {
+                debugStr.Append($" {dps}");
                 sum += dps;
             }
-            currentAvgDPS = sum / (ulong)LastNCombatDPS.Count;
+            System.Console.WriteLine(debugStr.ToString());
+
+            currentAvgDPS = sum / (ulong)lastNCombatDPS.Count;
 
             lastTotalDamage = currentTotalDamage;
+        }
+
+        public void CheckDamage(DamageDealtMessage damageDealtMessage)
+        {
+            if (damageDealtMessage.attacker && damageDealtMessage.attacker == player.cachedBodyObject)
+            {
+                currentTotalDamage += (ulong)damageDealtMessage.damage;
+
+                System.Console.WriteLine($"Last: {lastTotalDamage}, Current: {currentTotalDamage}");
+            }
+        }
+
+        private void OnArenaRoundEnd(On.RoR2.ArenaMissionController.orig_EndRound orig, RoR2.ArenaMissionController self)
+        {
+            orig(self);
+
+            if (self.clearedEffect != null)
+            {
+                System.Console.WriteLine("clearedEffect is uninitialized");
+            } 
+            else
+            {
+                System.Console.WriteLine("Toggling clearedEffect");
+                self.clearedEffect.SetActive(true);
+            }
         }
 
         private void OnRunStart(On.RoR2.Run.orig_Start orig, RoR2.Run self)
         {
             orig(self);
-            // Must reset all values since class is not re-awoken/instantiated
 
-            DamageDealt = RoR2.Stats.StatDef.Find("totalDamageDealt");
+            damageDealt = RoR2.Stats.StatDef.Find("totalDamageDealt");
 
             currentAvgDPS = 0;
 
+            currentTotalDamage = 0;
+
             lastTotalDamage = 0;
 
-            LastNCombatDPS = new LinkedList<ulong>();
+            lastNCombatDPS = new LinkedList<ulong>();
 
-            Player = LocalUserManager.GetFirstLocalUser();
+            player = LocalUserManager.GetFirstLocalUser();
 
             InvokeRepeating("RollingStats", 1f, 1f);
+
+            System.Console.WriteLine("Statistics plugin initialized");
         }
 
         private void OnRunEnd(On.RoR2.Run.orig_OnDestroy orig, RoR2.Run self)
@@ -113,42 +148,38 @@ namespace Pyro
 
             if (self != player.cachedBody) return;  // Skip anyone besides the local player
 
-            if(StatsDisplay == null && Run.instance)  // Create a new stats display if it hasn't been created
+            if(statsDisplay == null && Run.instance)  // Create a new stats display if it hasn't been created
             {
-                StatsDisplay = player.cachedBody.gameObject.AddComponent<StatsDisplay>();
-                StatsDisplay.transform.SetParent(player.cachedBody.transform);
-                StatsDisplay.Root.transform.position = new Vector3((Screen.width * 10f) / 100f, (Screen.height * 35f) / 100, 0f);
-                StatsDisplay.Title = () => "Stats";
-                StatsDisplay.Body = () => "";
-                StatsDisplay.GenericNotification.fadeTime = 1f;
-                StatsDisplay.GenericNotification.duration = 86400f;
-                StatsDisplay.GenericNotification.GetComponent<RectTransform>().sizeDelta = new Vector2(250, 250);
+                statsDisplay = player.cachedBody.gameObject.AddComponent<StatsDisplay>();
+                statsDisplay.transform.SetParent(player.cachedBody.transform);
+                statsDisplay.Root.transform.position = statsPosition;
+                statsDisplay.Title = () => "Stats";
+                statsDisplay.Body = () => "";
+                statsDisplay.GenericNotification.fadeTime = 1f;
+                statsDisplay.GenericNotification.duration = 86400f;
+                statsDisplay.GenericNotification.GetComponent<RectTransform>().sizeDelta = statsSize;
             }
-            if (StatsDisplay)
+            if (statsDisplay)
             {
                 float zeroBasedLevel = self.level - 1;
                 StringBuilder bodyStr = new StringBuilder("", 200);
+
+                float armorPercent = (self.armor >= 0f) ? (self.armor / (self.armor + 100f)) * 100 : (100f / (100f - self.armor) - 1) * 100;
+                float baseArmor = self.baseArmor + self.levelArmor * zeroBasedLevel;
+                float baseArmorPercent = (baseArmor >= 0f) ? (baseArmor / (baseArmor + 100f)) * 100 : (100f / (100f - baseArmor) - 1) * 100;
+
                 // These calculations mirror the intermediate ones found in CharacterBody.RecalculateStats
                 bodyStr.Append(String.Join(
                     Environment.NewLine,
                     "<style=cIsUtility>General</style>",
                     $"Move Spd: {self.moveSpeed} ({self.baseMoveSpeed + self.levelMoveSpeed * zeroBasedLevel})",
                     $"Regen: {self.regen} ({self.baseRegen + self.levelRegen * zeroBasedLevel})",
+                    $"Armor: {Math.Round(armorPercent)}% ({Math.Round(baseArmor)}%)",
                     "<style=cIsUtility><color=\"orange\">Attack</color></style>",
                     $"Damage: {self.damage} ({self.baseDamage + self.levelDamage * zeroBasedLevel})",
                     $"Atk Spd: {self.attackSpeed} ({self.baseAttackSpeed + self.levelAttackSpeed * zeroBasedLevel})",
                     $"Crit: {self.crit} ({self.baseCrit + self.levelCrit * zeroBasedLevel}){Environment.NewLine}"
                     ));
-                //$"<style=cIsUtility><color=\"green\">Skills</color></style>{Environment.NewLine}"
-                //if (self.skillLocator.primary)
-                //{   // isBullets does not seem to do what I expect it to do (Captain's intra-shot cooldown is apparently not a bullet)
-                //    if (self.skillLocator.primary.isBullets) bodyStr.Append($"Prim Cd: { self.skillLocator.primary.baseSkill.shootDelay}{Environment.NewLine})");
-                //}
-                //if (self.skillLocator.secondary)
-                //{
-                //    if (self.skillLocator.secondary.isBullets) bodyStr.Append($"Sec Cd: { self.skillLocator.secondary.baseSkill.shootDelay}{Environment.NewLine}");
-                //}
-                //if (self.skillLocator.special) bodyStr.Append($"Spcl Cd: {self.skillLocator.special.CalculateFinalRechargeInterval()}{Environment.NewLine}");
 
                 //bodyStr.Append(String.Join(
                 //    Environment.NewLine,
@@ -161,17 +192,16 @@ namespace Pyro
                     Environment.NewLine,
                     "<style=cIsUtility><color=\"red\">DPS</color></style>",
                     //$"Combat: {!self.outOfCombat}",
-                    $"Total Dmg: {player.cachedStatsComponent.currentStats.GetStatDisplayValue(DamageDealt)}",
+                    $"Total Dmg: {player.cachedStatsComponent.currentStats.GetStatDisplayValue(damageDealt)}",
                     $"Avg DPS: {currentAvgDPS}"
                     ));
 
-                StatsDisplay.Body = () => bodyStr.ToString();
+                statsDisplay.Body = () => bodyStr.ToString();
             }
         }
-
         private void OnDestroy()
         {
-            LastNCombatDPS = null;
+            lastNCombatDPS = null;
         }
     }
 }

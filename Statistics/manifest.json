@@ -1,0 +1,10 @@
+{
+  "name": "Statistics",
+  "author": "Pyro",
+  "version_number": "1.1.1",
+  "website_url": "https://github.com/ThePyrotechnic/RoR2StatisticsMod",
+  "description": "A UI to show in-game stats",
+  "dependencies": [
+    "bbepis-BepInExPack-5.4.9"
+  ]
+}
